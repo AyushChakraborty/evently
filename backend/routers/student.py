@@ -5,13 +5,17 @@ handles signup, login, event interactions
 
 from typing import Optional
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from starlette.types import HTTPExceptionHandler
 
 from backend.db import get_db
+
+##########signup###############
 
 
 class StudentSignup(BaseModel):
@@ -34,7 +38,6 @@ router = APIRouter(prefix="/student", tags=["Student"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-# signup
 @router.post("/signup")
 def signup_student(student_data: StudentSignup, db: Session = Depends(get_db)):
     """
@@ -87,3 +90,57 @@ def signup_student(student_data: StudentSignup, db: Session = Depends(get_db)):
         ) from e  # exception chaining,
         # from says that a new exception (HTTPException) is raised but it was caused by this earlier
         # exception e. Useful for debugging
+
+
+#########login#####
+class StudentLogin(BaseModel):
+    """
+    class for data coming from user during login
+    """
+
+    email: EmailStr
+    password: str
+
+
+@router.post("/login")
+def login_student(login_data: StudentLogin, db: Session = Depends(get_db)):
+    """
+    verify student's creds and role, given the user only gives
+    in the email and pass
+    """
+    try:
+        result = db.execute(
+            text(
+                """
+                     SELECT u.user_id, u.first_name, u.last_name, u.password_hash, r.role_name
+                     FROM users u
+                     JOIN roles r ON u.role_id = r.role_id
+                     WHERE u.email = :email;
+                     """
+            ),
+            {"email": login_data.email},
+        ).fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="user not found")
+
+        # check if the password is same by checking password entered by
+        # user and that fetched from db, which is the right one
+        if not pwd_context.verify(login_data.password, result.password_hash):
+            # 401: unauthorised client error
+            raise HTTPException(status_code=401, detail="invalid password")
+
+        # ensure the role is student
+        if result.role_name.lower() != "student":
+            # 403: forbidden client error, changing authentication does not help here
+            raise HTTPException(status_code=403, detail="user is not a student")
+
+        return {
+            "message": f"welcome, {result.first_name}!",
+            "user_id": result.user_id,
+            "role": result.role_name,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"error: {str(e)}") from e
