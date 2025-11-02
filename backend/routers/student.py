@@ -6,12 +6,11 @@ handles signup, login, event interactions
 from typing import Optional
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from starlette.types import HTTPExceptionHandler
 
 from backend.db import get_db
 
@@ -143,4 +142,69 @@ def login_student(login_data: StudentLogin, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         db.rollback()
+        raise HTTPException(status_code=400, detail=f"error: {str(e)}") from e
+
+
+#######get events###########
+@router.get("/{student_id}/events")
+def get_all_events_for_students(
+    student_id: int = Path(..., gt=0), db: Session = Depends(get_db)
+):
+    """
+    return all upcoming events for a student
+    """
+
+    try:
+        # verify the student exists
+        result = db.execute(
+            text(
+                """
+        SELECT u.user_id, r.role_name
+        FROM users u 
+        JOIN roles r ON u.role_id = r.role_id
+        WHERE u.user_id = :student_id;
+        """
+            ),
+            {"student_id": student_id},
+        ).fetchone()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="student not found")
+        if result.role_name.lower() != "student":
+            raise HTTPException(status_code=403, detail="user is not a student")
+
+        # fetch all upcoming events
+        events = db.execute(
+            text(
+                """
+        SELECT e.event_id, e.event_name, e.description, e.start_time, e.end_time, c.club_name, v.venue_name, v.location
+        FROM events e JOIN clubs c ON e.club_id = c.club_id
+        LEFT JOIN bookings b ON e.event_id = b.event_id AND b.status = 'Approved'
+        LEFT JOIN venues v ON b.venue_id = v.venue_id
+        WHERE e.start_time >= NOW()
+        ORDER BY e.start_time ASC;
+        """
+            )
+        ).fetchall()
+
+        # convert to json
+        events_list = [
+            {
+                "event_id": row.event_id,
+                "event_name": row.event_name,
+                "description": row.description,
+                "start_time": row.start_time,
+                "end_time": row.end_time,
+                "club_name": row.club_name,
+                "venue_name": row.venue_name,
+                "venue_location": row.location,
+            }
+            for row in events
+        ]
+
+        return {"student_id": student_id, "events": events_list}
+
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(status_code=400, detail=f"error: {str(e)}") from e
