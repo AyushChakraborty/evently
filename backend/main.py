@@ -4,21 +4,28 @@ from separate files into app
 """
 
 from fastapi import FastAPI
-
+from fastapi.middleware.cors import CORSMiddleware
 from backend.routers import student
-
-# from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI(title="evently: university event management api")
 
+#allow CORS
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins, 
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"],  
+)
+
 # routers
 app.include_router(student.router)
-
-# for any path that isnt handled by the API routes, serve static files from
-# the frontend dir
-# app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
-
 
 @app.get("/")
 def root():
