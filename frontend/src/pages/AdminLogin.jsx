@@ -1,20 +1,43 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 function AdminLogin() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Add admin login logic here
+    setError("");
+    setLoading(true);
+
+    try {
+      // Use the /admin/login endpoint
+      const response = await axios.post(
+        "http://localhost:8000/admin/login",
+        formData,
+      );
+      // Store admin data in localStorage
+      localStorage.setItem("admin", JSON.stringify(response.data));
+      // Navigate to the (upcoming) admin dashboard
+      navigate("/admin-dashboard");
+    } catch (err) {
+      setError(
+        err.response?.data?.detail ||
+          "Login failed. Please check your credentials.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -22,11 +45,16 @@ function AdminLogin() {
       <div className="max-w-5xl mx-auto px-6 py-12">
         <div className="flex flex-col items-center justify-center min-h-[80vh]">
           <div className="flex items-center gap-3 mb-8">
-            {/* <Shield className="w-10 h-10 text-red-500" /> REMOVED */}
             <h1 className="text-4xl font-bold">Admin Login</h1>
           </div>
 
           <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4">
+            {error && (
+              <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
+                {error}
+              </div>
+            )}
+
             <input
               type="email"
               name="email"
@@ -49,14 +77,15 @@ function AdminLogin() {
 
             <button
               type="submit"
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg px-6 py-3 transition"
+              disabled={loading}
+              className="w-full bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg px-6 py-3 transition disabled:opacity-50"
             >
-              Login
+              {loading ? "Logging in..." : "Login"}
             </button>
 
             <button
               type="button"
-              onClick={() => navigate('/')}
+              onClick={() => navigate("/")}
               className="w-full text-gray-400 hover:text-white transition"
             >
               Back to Home
